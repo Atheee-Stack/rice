@@ -1,0 +1,41 @@
+{
+  "name": "core-kernel",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/_core/kernel/src",
+  "projectType": "library",
+  "tags": [
+    "type:core-module",
+    "domain:core",
+    "layer:infrastructure",
+    "arch:ddd",
+    "access:shared"
+  ],
+  "// targets": "to see all targets run: nx show project core-kernel --web",
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "options": {
+        "jestConfig": "libs/_core/kernel/jest.config.ts",
+        "passWithNoTests": false,
+        "runInBand": true,
+        "codeCoverage": true
+      },
+      "configurations": {
+        "strict": {
+          "ci": true,
+          "coverageReporters": [
+            "text",
+            "lcov"
+          ],
+          "coverageThreshold": {
+            "global": {
+              "branches": 100,
+              "functions": 100,
+              "lines": 100
+            }
+          }
+        }
+      }
+    }
+  }
+}

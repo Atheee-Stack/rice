@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "libs/_core/kernel/src/index.ts"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "./docs/_core",
+  "name": "Rice Core Kernel",
+  "githubPages": false,
+  "hideGenerator": true,
+  "exclude": [
+    "**/__mocks__/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "tsconfig": "./tsconfig.docs.json",
+}

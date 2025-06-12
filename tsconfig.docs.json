@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "libs/_core/kernel/src/**/*.ts"
+  ]
+}
