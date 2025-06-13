@@ -1,11 +1,11 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": {
-    "baseUrl": "./"
-  },
   "files": [],
   "include": [],
   "references": [
+    {
+      "path": "../kernel"
+    },
     {
       "path": "./tsconfig.lib.json"
     },

@@ -2,18 +2,19 @@
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
+  "compilerOptions": {
+    "baseUrl": "./"
+  },
   "references": [
     {
       "path": "./libs/_core/kernel"
+    },
+    {
+      "path": "./libs/_core/infra"
+    },
+    {
+      "path": "./libs/_core/infra"
     }
   ],
-  "include": [
-    "libs/**/*.ts",
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "**/*.spec.ts",
-    "**/*.test.ts",
-    "node_modules"
-  ]
+  "exclude": ["**/*.spec.ts", "**/*.test.ts", "node_modules"]
 }

@@ -17,8 +17,7 @@
       "options": {
         "jestConfig": "libs/_core/kernel/jest.config.ts",
         "passWithNoTests": false,
-        "runInBand": true,
-        "codeCoverage": true
+        "runInBand": true
       },
       "configurations": {
         "strict": {

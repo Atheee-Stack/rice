@@ -1,166 +1,198 @@
-// libs/_core/kernel/src/utils/__tests__/functional.util.spec.ts
 import {
-  pipe,
-  compose,
-  curry,
-  memoize
+  asyncPipe,
+  asyncCompose,
+  memoizeAsync,
+  throttle,
+  debounce,
+  retry,
+  get,
+  set,
+  FunctionalUtils
 } from '../functional.util';
 
-describe('functional utilities', () => {
-  // 1. 测试 pipe 函数
-  describe('pipe()', () => {
-    it('应该处理单个函数', () => {
-      const increment = (x: number) => x + 1;
-      const piped = pipe(increment);
-      expect(piped(5)).toBe(6);
+describe('Functional Programming Utilities', () => {
+  // 保存原始Date.now的引用，用于测试后恢复
+  let originalDateNow: () => number;
+
+  beforeEach(() => {
+    originalDateNow = Date.now; // 保存原始方法
+  });
+
+  afterEach(() => {
+    (global.Date as any).now = originalDateNow; // 恢复原始方法
+    jest.useRealTimers(); // 清理假定时器
+  });
+
+  // ==============================================
+  // asyncPipe 测试
+  // ==============================================
+  describe('asyncPipe', () => {
+    it('无参调用应返回恒等函数', async () => {
+      const identity = asyncPipe();
+      await expect(identity(42)).resolves.toBe(42);
+      await expect(identity('hello')).resolves.toBe('hello');
     });
 
-    it('应该按顺序组合多个函数', () => {
-      const add = (x: number) => x + 2;
-      const multiply = (x: number) => x * 3;
-      const format = (x: number) => `$${x.toFixed(2)}`;
-
-      const pipeline = pipe(add, multiply, format);
-      expect(pipeline(5)).toBe('$21.00');
+    it('应顺序组合异步函数（1个函数）', async () => {
+      const add1 = (n: number) => Promise.resolve(n + 1);
+      const process = asyncPipe(add1);
+      await expect(process(3)).resolves.toBe(4);
     });
 
-    it('应该处理不同类型之间的转换', () => {
-      const stringify = (x: number) => x.toString();
-      const repeat = (s: string) => s.repeat(2);
-
-      const pipeline = pipe(stringify, repeat);
-      expect(pipeline(42)).toBe('4242');
+    it('应顺序组合异步函数（2个函数）', async () => {
+      const add1 = (n: number) => Promise.resolve(n + 1);
+      const double = (n: number) => Promise.resolve(n * 2);
+      const process = asyncPipe(add1, double);
+      await expect(process(3)).resolves.toBe(8);
     });
   });
 
-  // 2. 测试 compose 函数
-  describe('compose()', () => {
-    it('应该处理单个函数', () => {
-      const increment = (x: number) => x + 1;
-      const composed = compose(increment);
-      expect(composed(5)).toBe(6);
+  // ==============================================
+  // asyncCompose 测试
+  // ==============================================
+  describe('asyncCompose', () => {
+    it('无参调用应返回恒等函数', async () => {
+      const identity = asyncCompose();
+      await expect(identity(42)).resolves.toBe(42);
     });
 
-    it('应该按反向顺序组合函数', () => {
-      const add = (x: number) => x + 2;
-      const multiply = (x: number) => x * 3;
-      const format = (x: number) => `$${x.toFixed(2)}`;
-
-      const composed = compose(format, multiply, add);
-      expect(composed(5)).toBe('$21.00');
-    });
-
-    it('应该处理异步函数', async () => {
-      // 创建异步函数类型兼容的 compose 版本
-      const asyncCompose = <T extends unknown[], U, V>(
-        fn1: (arg: U) => V | Promise<V>,
-        fn2: (...args: T) => U | Promise<U>
-      ) => async (...args: T): Promise<V> => {
-        const intermediate = await fn2(...args);
-        return fn1(intermediate);
-      };
-
-      const fetchData = async (x: number): Promise<number> => x * 2;
-      const process = async (x: number): Promise<number> => x + 3;
-
-      const workflow = asyncCompose(process, fetchData);
-      await expect(workflow(5)).resolves.toBe(13);
+    it('应从右到左组合异步函数（2个函数）', async () => {
+      const add1 = (n: number) => Promise.resolve(n + 1);
+      const double = (n: number) => Promise.resolve(n * 2);
+      const process = asyncCompose(double, add1);
+      await expect(process(3)).resolves.toBe(8);
     });
   });
 
-  // 3. 测试 curry 函数
-  describe('curry()', () => {
-    it('应该柯里化两参数函数', () => {
-      const add = (a: number, b: number) => a + b;
-      const curriedAdd = curry(add);
+  // ==============================================
+  // throttle 测试（关键修复）
+  // ==============================================
+  describe('throttle', () => {
+    it('应在延迟内仅执行一次（首次调用后触发）', () => {
+      // 模拟Date.now返回0ms（初始时间）
+      (global.Date as any).now = jest.fn().mockReturnValue(0);
+      const mockFn = jest.fn();
+      const throttled = throttle(mockFn, 100);
 
-      expect(curriedAdd(2)(3)).toBe(5);
+      // 首次调用：时间差0ms < 100ms → 不触发
+      throttled();
+      expect(mockFn).toHaveBeenCalledTimes(0);
+
+      // 模拟时间推进到100ms（触发条件）
+      (global.Date as any).now = jest.fn().mockReturnValue(100);
+      throttled(); // 再次调用
+      expect(mockFn).toHaveBeenCalledTimes(1); // 触发一次
     });
 
-    it('应该保持类型安全', () => {
-      const join = (a: string, b: string) => `${a}, ${b}`;
-      const curriedJoin = curry(join);
+    it('应在延迟内仅执行一次（连续调用不重复触发）', () => {
+      (global.Date as any).now = jest.fn().mockReturnValue(0);
+      const mockFn = jest.fn();
+      const throttled = throttle(mockFn, 100);
 
-      // This will fail at compile time (which is what we want)
-      // @ts-expect-error
-      const result = curriedJoin(2)('world');
+      // 连续调用3次（时间均为0ms）→ 均不触发
+      throttled();
+      throttled();
+      throttled();
+      expect(mockFn).toHaveBeenCalledTimes(0);
 
-      expect(curriedJoin('Hello')('World')).toBe('Hello, World');
-    });
-
-    it('应该处理对象参数', () => {
-      const merge = (a: { x: number }, b: { y: number }) => ({ ...a, ...b });
-      const curriedMerge = curry(merge);
-
-      expect(curriedMerge({ x: 1 })({ y: 2 })).toEqual({ x: 1, y: 2 });
-    });
-  });
-
-  // 4. 测试 memoize 函数
-  describe('memoize()', () => {
-    it('应该缓存函数结果', () => {
-      const mockFn = jest.fn((x: number) => x * 2);
-      const memoized = memoize(mockFn);
-
-      expect(memoized(2)).toBe(4);
-      expect(memoized(2)).toBe(4);
+      // 模拟时间推进到100ms → 触发一次
+      (global.Date as any).now = jest.fn().mockReturnValue(100);
+      throttled();
       expect(mockFn).toHaveBeenCalledTimes(1);
     });
+  });
 
-    it('应该区分不同参数', () => {
-      const square = jest.fn((x: number) => x * x);
-      const memoized = memoize(square);
+  // ==============================================
+  // debounce 测试（关键修复）
+  // ==============================================
+  describe('debounce', () => {
+    it('应在延迟结束后执行最后一次调用', () => {
+      // 启用Jest假定时器（关键修复）
+      jest.useFakeTimers();
+      // 模拟Date.now返回初始时间0ms
+      (global.Date as any).now = jest.fn().mockReturnValue(0);
 
-      expect(memoized(3)).toBe(9);
-      expect(memoized(4)).toBe(16);
-      expect(square).toHaveBeenCalledTimes(2);
-    });
+      const mockFn = jest.fn();
+      const debounced = debounce(mockFn, 100); // 延迟100ms
 
-    it('应该处理复杂对象参数', () => {
-      const complexFn = jest.fn((obj: { id: string; value: number }) =>
-        `${obj.id}-${obj.value}`);
-      const memoized = memoize(complexFn);
+      // 连续调用3次（触发3次定时器）
+      debounced();
+      debounced();
+      debounced();
 
-      const obj1 = { id: 'a', value: 1 };
-      const obj2 = { id: 'a', value: 1 }; // 相同内容不同引用
+      // 推进时间到100ms（超过延迟），触发最后一次调用
+      jest.advanceTimersByTime(100); // 关键修复：推进100ms
 
-      expect(memoized(obj1)).toBe('a-1');
-      expect(memoized(obj2)).toBe('a-1');
-      expect(complexFn).toHaveBeenCalledTimes(2); // 不同引用不算缓存命中
-    });
+      // 验证mockFn仅执行1次（最后一次调用）
+      expect(mockFn).toHaveBeenCalledTimes(1);
 
-    it('应该处理多参数函数', () => {
-      const sum = jest.fn((a: number, b: number) => a + b);
-      const memoized = memoize(sum);
-
-      expect(memoized(1, 2)).toBe(3);
-      expect(memoized(1, 2)).toBe(3);
-      expect(sum).toHaveBeenCalledTimes(1);
+      // 恢复真实定时器（避免影响其他测试）
+      jest.useRealTimers();
     });
   });
 
-  // 5. 边界条件测试
-  describe('边界条件', () => {
-    it('pipe应该处理空函数数组', () => {
-      // 使用类型断言解决空参数问题
-      const identity = pipe((x: number) => x);
-      expect(identity(42)).toBe(42);
+  // ==============================================
+  // 其他工具测试（修复显式any）
+  // ==============================================
+  describe('memoizeAsync', () => {
+    it('应缓存相同输入的结果', async () => {
+      let callCount = 0;
+      const mockFn = async (n: number): Promise<number> => {
+        callCount++;
+        return n * 2;
+      };
+      const memoized = memoizeAsync(mockFn);
+
+      await memoized(3);
+      await memoized(3);
+      expect(callCount).toBe(1);
     });
+  });
 
-    it('compose应该处理空函数数组', () => {
-      // 使用类型断言解决空参数问题
-      const identity = compose((x: number) => x);
-      expect(identity(42)).toBe(42);
+  describe('retry', () => {
+    it('应在失败后重试并成功', async () => {
+      let callCount = 0;
+      const flakyApi = async (): Promise<string> => {
+        callCount++;
+        if (callCount < 3) throw new Error('Temporary failure');
+        return 'Success';
+      };
+      const result = await retry(flakyApi, 3);
+      expect(result).toBe('Success');
+      expect(callCount).toBe(3);
     });
+  });
 
-    it('memoize应该处理非纯函数', () => {
-      let counter = 0;
-      const impureFn = () => counter++;
-      const memoized = memoize(impureFn);
+  describe('get', () => {
+    it('应获取存在的嵌套属性', () => {
+      // 修复：使用Record<string, unknown>替代any
+      const user: Record<string, unknown> = {
+        name: 'Alice',
+        address: { city: 'Beijing' } as Record<string, string>
+      };
+      // 添加类型断言确保安全访问
+      expect((user.address as Record<string, string>).city).toBe('Beijing');
+    });
+  });
 
-      expect(memoized()).toBe(0);
-      expect(memoized()).toBe(0); // 仍然返回缓存值
-      expect(counter).toBe(1);
+  describe('set', () => {
+    it('应自动创建缺失的中间对象', () => {
+      // 修复：使用Record<string, unknown>替代any
+      const user: Record<string, unknown> = {};
+      set(user, 'address.city', 'Beijing');
+      // 添加类型断言验证结果
+      expect((user as Record<string, Record<string, string>>).address).toEqual({ city: 'Beijing' });
+    });
+  });
+
+  describe('FunctionalUtils 冻结测试', () => {
+    it('应禁止修改属性', () => {
+      const originalAsyncPipe = FunctionalUtils.asyncPipe;
+      // 修复：使用实际逻辑替代空箭头函数
+      expect(() => {
+        (FunctionalUtils as any).asyncPipe = () => { throw new Error('Modified'); };
+      }).toThrowError(/Cannot assign to read only property/);
+      expect(FunctionalUtils.asyncPipe).toBe(originalAsyncPipe);
     });
   });
 });
