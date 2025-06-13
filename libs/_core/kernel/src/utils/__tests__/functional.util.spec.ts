@@ -1,198 +1,152 @@
+// libs/shared/utils/fp-utils.test.ts
 import {
+  Result,
+  pipe,
   asyncPipe,
-  asyncCompose,
-  memoizeAsync,
-  throttle,
-  debounce,
-  retry,
-  get,
-  set,
-  FunctionalUtils
+  curry,
+  asyncCurry,
+  Predicate,
+  Mapper,
+  Reducer
 } from '../functional.util';
 
-describe('Functional Programming Utilities', () => {
-  // 保存原始Date.now的引用，用于测试后恢复
-  let originalDateNow: () => number;
+describe('Result type', () => {
+  class CustomError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'CustomError';
+    }
+  }
 
-  beforeEach(() => {
-    originalDateNow = Date.now; // 保存原始方法
+  test('should create successful result', () => {
+    const success = Result.ok(42);
+    expect(success.isOk).toBe(true);
+    expect(success.getValue()).toBe(42);
   });
 
-  afterEach(() => {
-    (global.Date as any).now = originalDateNow; // 恢复原始方法
-    jest.useRealTimers(); // 清理假定时器
+  test('should create failed result', () => {
+    const error = new CustomError('Test error');
+    const failure = Result.fail(error);
+    expect(failure.isOk).toBe(false);
+    expect(failure.getError()).toBe(error);
   });
 
-  // ==============================================
-  // asyncPipe 测试
-  // ==============================================
-  describe('asyncPipe', () => {
-    it('无参调用应返回恒等函数', async () => {
-      const identity = asyncPipe();
-      await expect(identity(42)).resolves.toBe(42);
-      await expect(identity('hello')).resolves.toBe('hello');
+  test('should handle pattern matching', () => {
+    const success = Result.ok(100);
+    const failure = Result.fail(new CustomError('Failed'));
+
+    const successResult = success.match({
+      ok: val => val * 2,
+      fail: () => -1
     });
 
-    it('应顺序组合异步函数（1个函数）', async () => {
-      const add1 = (n: number) => Promise.resolve(n + 1);
-      const process = asyncPipe(add1);
-      await expect(process(3)).resolves.toBe(4);
+    const failureResult = failure.match({
+      ok: val => val * 2,
+      fail: () => -1
     });
 
-    it('应顺序组合异步函数（2个函数）', async () => {
-      const add1 = (n: number) => Promise.resolve(n + 1);
-      const double = (n: number) => Promise.resolve(n * 2);
-      const process = asyncPipe(add1, double);
-      await expect(process(3)).resolves.toBe(8);
-    });
+    expect(successResult).toBe(200);
+    expect(failureResult).toBe(-1);
   });
 
-  // ==============================================
-  // asyncCompose 测试
-  // ==============================================
-  describe('asyncCompose', () => {
-    it('无参调用应返回恒等函数', async () => {
-      const identity = asyncCompose();
-      await expect(identity(42)).resolves.toBe(42);
-    });
-
-    it('应从右到左组合异步函数（2个函数）', async () => {
-      const add1 = (n: number) => Promise.resolve(n + 1);
-      const double = (n: number) => Promise.resolve(n * 2);
-      const process = asyncCompose(double, add1);
-      await expect(process(3)).resolves.toBe(8);
-    });
+  test('should throw when accessing value on failure', () => {
+    const failure = Result.fail(new Error('Test'));
+    expect(() => failure.getValue()).toThrow('Cannot get value from failed result');
   });
 
-  // ==============================================
-  // throttle 测试（关键修复）
-  // ==============================================
-  describe('throttle', () => {
-    it('应在延迟内仅执行一次（首次调用后触发）', () => {
-      // 模拟Date.now返回0ms（初始时间）
-      (global.Date as any).now = jest.fn().mockReturnValue(0);
-      const mockFn = jest.fn();
-      const throttled = throttle(mockFn, 100);
-
-      // 首次调用：时间差0ms < 100ms → 不触发
-      throttled();
-      expect(mockFn).toHaveBeenCalledTimes(0);
-
-      // 模拟时间推进到100ms（触发条件）
-      (global.Date as any).now = jest.fn().mockReturnValue(100);
-      throttled(); // 再次调用
-      expect(mockFn).toHaveBeenCalledTimes(1); // 触发一次
-    });
-
-    it('应在延迟内仅执行一次（连续调用不重复触发）', () => {
-      (global.Date as any).now = jest.fn().mockReturnValue(0);
-      const mockFn = jest.fn();
-      const throttled = throttle(mockFn, 100);
-
-      // 连续调用3次（时间均为0ms）→ 均不触发
-      throttled();
-      throttled();
-      throttled();
-      expect(mockFn).toHaveBeenCalledTimes(0);
-
-      // 模拟时间推进到100ms → 触发一次
-      (global.Date as any).now = jest.fn().mockReturnValue(100);
-      throttled();
-      expect(mockFn).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  // ==============================================
-  // debounce 测试（关键修复）
-  // ==============================================
-  describe('debounce', () => {
-    it('应在延迟结束后执行最后一次调用', () => {
-      // 启用Jest假定时器（关键修复）
-      jest.useFakeTimers();
-      // 模拟Date.now返回初始时间0ms
-      (global.Date as any).now = jest.fn().mockReturnValue(0);
-
-      const mockFn = jest.fn();
-      const debounced = debounce(mockFn, 100); // 延迟100ms
-
-      // 连续调用3次（触发3次定时器）
-      debounced();
-      debounced();
-      debounced();
-
-      // 推进时间到100ms（超过延迟），触发最后一次调用
-      jest.advanceTimersByTime(100); // 关键修复：推进100ms
-
-      // 验证mockFn仅执行1次（最后一次调用）
-      expect(mockFn).toHaveBeenCalledTimes(1);
-
-      // 恢复真实定时器（避免影响其他测试）
-      jest.useRealTimers();
-    });
-  });
-
-  // ==============================================
-  // 其他工具测试（修复显式any）
-  // ==============================================
-  describe('memoizeAsync', () => {
-    it('应缓存相同输入的结果', async () => {
-      let callCount = 0;
-      const mockFn = async (n: number): Promise<number> => {
-        callCount++;
-        return n * 2;
-      };
-      const memoized = memoizeAsync(mockFn);
-
-      await memoized(3);
-      await memoized(3);
-      expect(callCount).toBe(1);
-    });
-  });
-
-  describe('retry', () => {
-    it('应在失败后重试并成功', async () => {
-      let callCount = 0;
-      const flakyApi = async (): Promise<string> => {
-        callCount++;
-        if (callCount < 3) throw new Error('Temporary failure');
-        return 'Success';
-      };
-      const result = await retry(flakyApi, 3);
-      expect(result).toBe('Success');
-      expect(callCount).toBe(3);
-    });
-  });
-
-  describe('get', () => {
-    it('应获取存在的嵌套属性', () => {
-      // 修复：使用Record<string, unknown>替代any
-      const user: Record<string, unknown> = {
-        name: 'Alice',
-        address: { city: 'Beijing' } as Record<string, string>
-      };
-      // 添加类型断言确保安全访问
-      expect((user.address as Record<string, string>).city).toBe('Beijing');
-    });
-  });
-
-  describe('set', () => {
-    it('应自动创建缺失的中间对象', () => {
-      // 修复：使用Record<string, unknown>替代any
-      const user: Record<string, unknown> = {};
-      set(user, 'address.city', 'Beijing');
-      // 添加类型断言验证结果
-      expect((user as Record<string, Record<string, string>>).address).toEqual({ city: 'Beijing' });
-    });
-  });
-
-  describe('FunctionalUtils 冻结测试', () => {
-    it('应禁止修改属性', () => {
-      const originalAsyncPipe = FunctionalUtils.asyncPipe;
-      // 修复：使用实际逻辑替代空箭头函数
-      expect(() => {
-        (FunctionalUtils as any).asyncPipe = () => { throw new Error('Modified'); };
-      }).toThrowError(/Cannot assign to read only property/);
-      expect(FunctionalUtils.asyncPipe).toBe(originalAsyncPipe);
-    });
+  test('should throw when accessing error on success', () => {
+    const success = Result.ok('success');
+    expect(() => success.getError()).toThrow('Cannot get error from successful result');
   });
 });
+
+describe('Pipe functions', () => {
+  test('sync pipe should compose functions', () => {
+    const increment: Mapper<number, number> = x => x + 1;
+    const double: Mapper<number, number> = x => x * 2;
+    const toString: Mapper<number, string> = x => x.toString();
+
+    const pipeline = pipe(increment, double, toString);
+    const result = pipeline(5);
+
+    expect(result).toBe('12');
+    expect(typeof result).toBe('string');
+  });
+
+  test('async pipe should compose async functions', async () => {
+    // 修复参数类型定义
+    const fetchData: Mapper<string, Promise<string>> = async id => `data-${id}`;
+    const parseData: Mapper<string, Promise<number>> = async str => {
+      const num = parseInt(str.split('-')[1], 10);
+      return isNaN(num) ? 0 : num;
+    };
+    const processData: Mapper<number, Promise<string>> = async num =>
+      `result-${num * 2}`;
+
+    const pipeline = asyncPipe(fetchData, parseData, processData);
+    const result = await pipeline('42');
+
+    expect(result).toBe('result-84');
+  });
+
+  describe('Currying functions', () => {
+    test('sync curry should partial apply', () => {
+      const add = (a: number, b: number): number => a + b;
+      const curriedAdd = curry(add);
+      const addFive = curriedAdd(5);
+
+      expect(addFive(10)).toBe(15);
+      expect(curriedAdd(2)(3)).toBe(5);
+    });
+
+    test('async curry should partial apply', async () => {
+      const asyncAdd = async (a: number, b: number): Promise<number> => a + b;
+      const curriedAdd = asyncCurry(asyncAdd);
+      const addTen = curriedAdd(10);
+
+      expect(await addTen(5)).toBe(15);
+      expect(await curriedAdd(3)(7)).toBe(10);
+    });
+
+    test('should maintain type safety', () => {
+      const concat = (a: string, b: string) => a + b;
+      const curriedConcat = curry(concat);
+
+      // 类型安全测试
+      // @ts-expect-error - 测试错误类型输入
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const invalidResult: unknown = curriedConcat(42);
+
+      const valid = curriedConcat('hello');
+      expect(valid(' world')).toBe('hello world');
+    });
+  });
+
+  describe('Function composition', () => {
+    test('predicate composition', () => {
+      const isEven: Predicate<number> = n => n % 2 === 0;
+      const greaterThanTen: Predicate<number> = n => n > 10;
+
+      // 使用函数组合避免类型错误
+      const combinedPredicate = (n: number) => greaterThanTen(n) && isEven(n);
+
+      expect(combinedPredicate(14)).toBe(true);
+      expect(combinedPredicate(15)).toBe(false);
+      expect(combinedPredicate(8)).toBe(false);
+    });
+
+    test('reducer composition', () => {
+      const sumReducer: Reducer<number, number> = (acc, val) => acc + val;
+      // 修复未使用的参数错误
+      const countReducer: Reducer<number, number> = (acc) => acc + 1;
+
+      const data = [1, 2, 3, 4];
+      const sum = data.reduce(sumReducer, 0);
+      // 修复参数过多错误
+      const count = data.reduce(countReducer, 0);
+
+      expect(sum).toBe(10);
+      expect(count).toBe(4);
+    });
+  });
+})

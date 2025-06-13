@@ -1,9 +1,7 @@
 // rice/libs/_core/kernel/src/domain/value-object.base.ts
-/**
- * 定义基本原始类型
- * 包括: 字符串、数字、布尔值、null 和 undefined
- */
-export type Primitive = string | number | boolean | null | undefined;
+
+import { Primitive } from "../utils/primitive.util";
+
 
 /**
  * 值对象属性接口

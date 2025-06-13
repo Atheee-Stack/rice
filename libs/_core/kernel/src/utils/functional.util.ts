@@ -1,3 +1,4 @@
+// rice/libs/_core/kernel/src/utils/functional.util.ts
 /**
  * 函数式编程工具（严格模式兼容）
  */
@@ -88,33 +89,48 @@ export function pipe<T1, T2>(fn1: (arg: T1) => T2): (arg: T1) => T2;
 /**
  * 三函数管道重载
  */
-export function pipe<T1, T2, T3>(
-  fn1: (arg: T1) => T2,
-  fn2: (arg: T2) => T3
-): (arg: T1) => T3;
-// 实际实现（使用unknown和类型断言保证安全）
+export function pipe<T1, R1>(fn1: (arg: T1) => R1): (arg: T1) => R1;
+export function pipe<T1, R1, R2>(
+  fn1: (arg: T1) => R1,
+  fn2: (arg: R1) => R2
+): (arg: T1) => R2;
+export function pipe<T1, R1, R2, R3>(
+  fn1: (arg: T1) => R1,
+  fn2: (arg: R1) => R2,
+  fn3: (arg: R2) => R3
+): (arg: T1) => R3;
 export function pipe(...fns: AnyFunction[]): AnyFunction {
-  return (input: unknown) =>
-    fns.reduce<unknown>((acc, fn) => fn(acc as never), input);
+  return (input: unknown) => {
+    let result = input;
+    for (const fn of fns) {
+      result = fn(result as never);
+    }
+    return result;
+  };
 }
 
 /**
  * 异步管道（支持Promise）
  */
-export function asyncPipe<T1, T2>(
-  fn1: (arg: T1) => Promise<T2>
-): (arg: T1) => Promise<T2>;
-export function asyncPipe<T1, T2, T3>(
-  fn1: (arg: T1) => Promise<T2>,
-  fn2: (arg: T2) => Promise<T3>
-): (arg: T1) => Promise<T3>;
+export function asyncPipe<T1, R1>(
+  fn1: (arg: T1) => Promise<R1>
+): (arg: T1) => Promise<R1>;
+export function asyncPipe<T1, R1, R2>(
+  fn1: (arg: T1) => Promise<R1>,
+  fn2: (arg: R1) => Promise<R2>
+): (arg: T1) => Promise<R2>;
+export function asyncPipe<T1, R1, R2, R3>(
+  fn1: (arg: T1) => Promise<R1>,
+  fn2: (arg: R1) => Promise<R2>,
+  fn3: (arg: R2) => Promise<R3>
+): (arg: T1) => Promise<R3>;
 export function asyncPipe(...fns: AnyFunction[]): AnyFunction {
   return async (input: unknown) => {
     let result = input;
     for (const fn of fns) {
       result = await fn(result as never);
     }
-    return result as never;
+    return result;
   };
 }
 

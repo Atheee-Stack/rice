@@ -6,8 +6,9 @@
  */
 
 // 导入值对象基类及关联类型
+import { Primitive } from '../utils/primitive.util.js';
 import { ValueObject } from './value-object.base.js';
-import type { ValueObjectProps, Primitive } from './value-object.base.js';
+import type { ValueObjectProps } from './value-object.base.js';
 
 /**
  * 实体属性接口定义

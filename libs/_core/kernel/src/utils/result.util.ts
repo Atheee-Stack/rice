@@ -1,3 +1,4 @@
+// rice/libs/_core/kernel/src/utils/result.util.ts
 /**
  * 表示操作可能成功或失败的通用结果类型
  * 
@@ -22,9 +23,18 @@ class Ok<T> {
   isOk(): this is Ok<T> {
     return true;
   }
+
   /**
- * 解包成功值（安全方法）
- */
+   * 检查是否为失败结果
+   * @returns false
+   */
+  isFail(): this is never {
+    return false;
+  }
+
+  /**
+   * 解包成功值（安全方法）
+   */
   unwrap(): T {
     return this.value;
   }
@@ -48,14 +58,23 @@ class Err<E> {
   constructor(readonly error: E) { }
 
   /**
-   * 类型保护 - 检查是否为失败结果
+   * 类型保护 - 检查是否为成功结果
    */
   isOk(): this is never {
     return false;
   }
+
   /**
-  * 解包成功值（在错误情况下抛出错误）
-  */
+   * 检查是否为失败结果
+   * @returns true
+   */
+  isFail(): this is Err<E> {
+    return true;
+  }
+
+  /**
+   * 解包成功值（在错误情况下抛出错误）
+   */
   unwrap(): never {
     throw this.error;
   }
@@ -89,6 +108,17 @@ function err<E>(error: E): Result<never, E> {
 }
 
 /**
+ * 创建失败结果（err的别名）
+ * 提供更语义化的API选择
+ * 
+ * @param error - 错误信息
+ * @returns 封装错误结果的对象
+ */
+function fail<E>(error: E): Result<never, E> {
+  return new Err(error);
+}
+
+/**
  * 从Result类型中提取成功值的类型
  * 
  * @template R - Result类型
@@ -102,5 +132,5 @@ type UnwrapResult<R> = R extends Result<infer T, unknown> ? T : never;
  */
 type UnwrapError<R> = R extends Result<unknown, infer E> ? E : never;
 
-export { Ok, Err, ok, err };
+export { Ok, Err, ok, err, fail };
 export type { Result, UnwrapResult, UnwrapError };
