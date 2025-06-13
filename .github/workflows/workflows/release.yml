@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Build & Test"]
+    branches: [main]
+    types:
+      - completed
+
+jobs:
+  version-bump:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: philips-software/semantic-release@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        with:
+          preset: conventionalcommits
+
+  deploy-npm:
+    needs: version-bump
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: ['core', 'organization']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish package
+        run: |
+          cd libs/${{ matrix.package }}
+          yarn publish --access public --non-interactive
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

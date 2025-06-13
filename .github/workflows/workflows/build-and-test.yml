@@ -1,0 +1,73 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [ main, feature/* ]
+  pull_request:
+    branches: [ main ]
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Verify Domain Models
+        uses: ./.github/actions/check-domain-model
+        with:
+          core-path: 'libs/_core/kernel/src/domain'
+
+  unit-test:
+    needs: validate
+    strategy:
+      matrix:
+        module: ['core', 'organization', 'api']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run unit tests
+        run: yarn test:${{ matrix.module }} --coverage
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgres://test@localhost:5432/test
+
+      - uses: codecov/codecov-action@v3
+        if: github.ref == 'refs/heads/main'
+
+  integration-test:
+    needs: unit-test
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker-compose -f docker-compose.test.yml up -d
+      
+      - name: Run integration tests
+        run: yarn test:integration
+        env:
+          NATS_URL: nats://localhost:4222

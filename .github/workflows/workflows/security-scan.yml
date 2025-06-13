@@ -1,0 +1,42 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # 每天凌晨1点
+  workflow_dispatch:
+
+jobs:
+  dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+
+      - name: Audit dependencies
+        run: yarn audit --level moderate
+        continue-on-error: true
+
+      - uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: results.sarif
+
+  container-scan:
+    runs-on: ubuntu-latest
+    needs: dependency-check
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t api-gateway ./apps/api-gateway
+      
+      - uses: anchore/sbom-action@v1
+        id: sbom
+      
+      - uses: anchore/scan-action@v3
+        with:
+          image: api-gateway
+          fail-build: true
+          severity-cutoff: high

@@ -1,0 +1,13 @@
+name: Auto-Approve
+
+on: pull_request
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions-ecosystem/action-approve-pr@v1
+        if: contains(github.event.pull_request.labels.*.name, 'auto-merge')
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          review_message: '✅ Auto-approved by DDD validator'
