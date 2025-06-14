@@ -1,4 +1,5 @@
 // rice/libs/_core/kernel/src/utils/primitive.util.ts
+
 /**
  * Primitive 类型模块：定义 JavaScript 基础原始类型
  * 这些类型是语言内置的基本数据类型，不可再分，没有方法
@@ -167,6 +168,13 @@ export const primitiveEquals = (a: Primitive, b: Primitive): boolean => {
  * @returns 基于值的哈希字符串
  */
 export const primitiveHash = (value: Primitive): string => {
+  // 处理特殊数字
+  if (typeof value === 'number') {
+    if (isNaN(value)) return 'number:NaN';
+    if (value === Infinity) return 'number:Infinity';
+    if (value === -Infinity) return 'number:-Infinity';
+  }
+
   // 显式处理 null 和 undefined
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
@@ -189,39 +197,21 @@ export const primitiveHash = (value: Primitive): string => {
  * @returns 标准排序结果（-1, 0, 1）
  */
 export const primitiveCompare = (a: Primitive, b: Primitive): number => {
-  // 定义原始类型名称的类型
-  type PrimitiveTypeName =
-    | 'undefined'
-    | 'null'
-    | 'string'
-    | 'number'
-    | 'boolean'
-    | 'symbol'
-    | 'bigint';
+  // 定义类型顺序映射（修正顺序）
+  const typeOrder = {
+    'null': 0,
+    'string': 1,
+    'number': 2,
+    'boolean': 3,
+    'symbol': 4,
+    'bigint': 5,
+    'undefined': 6
+  } as const;
 
-  // 定义类型顺序映射
-  const typeOrder: Record<PrimitiveTypeName, number> = {
-    'undefined': 0,
-    'null': 1,
-    'string': 2,
-    'number': 3,
-    'boolean': 4,
-    'symbol': 5,
-    'bigint': 6
-  };
-
-  // 获取值的类型名称
-  const getTypeName = (value: Primitive): PrimitiveTypeName => {
+  // 获取类型名称的统一方法
+  const getTypeName = (value: Primitive): keyof typeof typeOrder => {
     if (value === null) return 'null';
-    if (value === undefined) return 'undefined';
-    if (typeof value === 'string') return 'string';
-    if (typeof value === 'number') return 'number';
-    if (typeof value === 'boolean') return 'boolean';
-    if (typeof value === 'symbol') return 'symbol';
-    if (typeof value === 'bigint') return 'bigint';
-
-    // 理论上不会发生的情况，但为了保证类型安全
-    return 'undefined';
+    return typeof value as keyof typeof typeOrder;
   };
 
   const typeA = getTypeName(a);
@@ -229,7 +219,7 @@ export const primitiveCompare = (a: Primitive, b: Primitive): number => {
 
   // 类型不同的比较
   if (typeA !== typeB) {
-    return typeOrder[typeA] - typeOrder[typeB];
+    return typeOrder[typeA] < typeOrder[typeB] ? -1 : 1;
   }
 
   // 相同类型的比较
@@ -237,25 +227,44 @@ export const primitiveCompare = (a: Primitive, b: Primitive): number => {
     case 'string':
       return (a as string).localeCompare(b as string);
 
-    case 'number':
-      // 处理 NaN 的情况
-      if (isNaN(a as number) && isNaN(b as number)) return 0;
-      if (isNaN(a as number)) return 1; // NaN 视为比任何数字大
-      if (isNaN(b as number)) return -1;
-      return (a as number) - (b as number);
+    case 'number': {
+      const numA = a as number;
+      const numB = b as number;
+
+      // 处理 NaN
+      if (isNaN(numA) && isNaN(numB)) return 0;
+      if (isNaN(numA)) return 1;  // NaN 视为最大
+      if (isNaN(numB)) return -1;
+
+      // 处理 Infinity
+      if (numA === Infinity && numB === Infinity) return 0;
+      if (numA === Infinity) return 1;
+      if (numB === Infinity) return -1;
+      if (numA === -Infinity && numB === -Infinity) return 0;
+      if (numA === -Infinity) return -1;
+      if (numB === -Infinity) return 1;
+
+      // 标准比较（确保返回 -1/0/1）
+      return numA === numB ? 0 : numA < numB ? -1 : 1;
+    }
 
     case 'boolean':
       return (a === b) ? 0 : (a ? 1 : -1);
 
     case 'symbol':
+      // 使用哈希字符串进行比较
       return primitiveHash(a as symbol).localeCompare(primitiveHash(b as symbol));
 
-    case 'bigint':
-      return (a as bigint) < (b as bigint)
-        ? -1
-        : (a as bigint) > (b as bigint)
-          ? 1
-          : 0;
+    case 'bigint': {
+      const bigA = a as bigint;
+      const bigB = b as bigint;
+      return bigA === bigB ? 0 : bigA < bigB ? -1 : 1;
+    }
+
+    case 'undefined':
+    case 'null':
+      // 相同类型的 undefined 或 null 都视为相等
+      return 0;
 
     default:
       return 0;

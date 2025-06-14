@@ -1,5 +1,4 @@
 // rice/libs/user/domain/src/value-objects/role.vo.ts
-
 import {
   ValueObject,
   ValueObjectProps,

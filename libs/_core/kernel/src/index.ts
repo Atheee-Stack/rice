@@ -19,3 +19,4 @@ export type {
 export type { Primitive } from './utils/primitive.util.js';
 export { isPrimitive, isString, isNumber, isBoolean, isNull, isUndefined, isSymbol, isBigInt } from './utils/primitive.util.js';
 export { toPrimitive } from './utils/primitive.util.js';
+export { SpecValidator } from './utils/spec-validator.util.js'

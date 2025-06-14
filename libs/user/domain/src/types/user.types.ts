@@ -1,3 +1,4 @@
+// rice/libs/user/domain/src/types/user.types.ts
 /**
  * Represents a user's profile information.
  * 

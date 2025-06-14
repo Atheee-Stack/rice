@@ -1,6 +1,5 @@
-// rice/libs/_core/kernel/src/utils/spec-validator.util.ts
 import Ajv from 'ajv';
-import type { ErrorObject, SchemaObject } from 'ajv';
+import type { ErrorObject, SchemaObject, Options as AjvOptions } from 'ajv';
 import addFormats from 'ajv-formats';
 import {
   isString,
@@ -70,14 +69,14 @@ export interface ValidationResult<T = unknown> {
 export class SpecValidator {
   private ajv: Ajv;
 
-  constructor() {
+  constructor(options: AjvOptions = {}) {
     this.ajv = new Ajv({
       allErrors: true,      // 收集所有错误
       coerceTypes: true,    // 自动类型转换
-      removeAdditional: true, // 过滤额外属性
       useDefaults: true,   // 使用默认值填充
       strict: false,        // 兼容模式（允许额外属性）
-      messages: true        // 内置错误消息
+      messages: true,       // 内置错误消息
+      ...options            // 允许传入自定义选项
     });
 
     // 添加标准格式支持（email/url 等）
@@ -234,7 +233,7 @@ export class SpecValidator {
    * 1. 完整路径消息（error.instancePath.error.keyword）
    * 2. 全局关键字消息（error.keyword）
    * 3. 内置语义化消息（类型/长度/范围等）
-   * 4. AJV 原始错误消息
+   * 4. AJV 原始错误消息（移除前缀）
    * 
    * @param error - AJV错误对象
    * @param spec - 包含自定义消息的规范
@@ -256,29 +255,31 @@ export class SpecValidator {
     // 次优匹配关键字全局消息
     if (spec.messages?.[error.keyword]) return spec.messages[error.keyword];
 
-    const prefix = error.instancePath
-      ? `属性[${error.instancePath}]`
-      : '值';
-
-    // 内置语义化消息（type/required/minLength等）
+    // 内置语义化消息（类型/长度/范围等）
     switch (error.keyword) {
       case 'type':
-        return `${prefix}要求类型：${error.params.type}`;
+        return `要求类型：${error.params.type}`;
       case 'required':
-        return `${prefix}缺少必需属性：${error.params.missingProperty}`;
+        return `缺少必需属性：${error.params.missingProperty}`;
       case 'minLength':
-        return `${prefix}长度至少为 ${error.params.limit} 字符`;
+        return `长度至少为 ${error.params.limit} 字符`;
       case 'maxLength':
-        return `${prefix}长度不可超过 ${error.params.limit} 字符`;
+        return `长度不可超过 ${error.params.limit} 字符`;
       case 'minimum':
-        return `${prefix}最小值为 ${error.params.limit}`;
+        return `最小值为 ${error.params.limit}`;
       case 'maximum':
-        return `${prefix}最大值为 ${error.params.limit}`;
+        return `最大值为 ${error.params.limit}`;
       case 'format':
-        return `${prefix}需要符合 ${error.params.format} 格式`;
+        return `需要符合 ${error.params.format} 格式`;
+      case 'uniqueItems':
+        return '数组元素不能重复';
+      case 'additionalProperties':
+        return `不允许的额外属性: ${error.params.additionalProperty}`;
+      case 'pattern':
+        return '格式不符合要求';
       default:
-        // 降级使用AJV原始消息
-        return this.ajv.errorsText([error], { dataVar: prefix });
+        // 移除AJV原始消息的前缀
+        return this.ajv.errorsText([error], { dataVar: '' });
     }
   }
 

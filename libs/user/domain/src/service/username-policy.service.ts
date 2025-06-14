@@ -1,5 +1,5 @@
 import { ok, fail, Result } from '@rice/core-kernel';
-import { SpecValidator } from '@rice/core-kernel/utils/spec-validator.util';
+import { SpecValidator } from '@rice/core-kernel';
 import type { ValidationError } from 'jsonschema';
 import { isString, toPrimitive } from '@rice/core-kernel';
 

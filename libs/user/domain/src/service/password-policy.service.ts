@@ -1,3 +1,4 @@
+// rice/libs/user/domain/src/service/password-policy.service.ts
 import { ok, err, Result } from '@rice/core-kernel';
 import { DomainException } from '@rice/core-kernel';
 import type { Primitive } from '@rice/core-kernel';

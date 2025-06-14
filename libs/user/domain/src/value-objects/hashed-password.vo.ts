@@ -1,3 +1,4 @@
+// rice/libs/user/domain/src/value-objects/hashed-password.vo.ts
 import { CryptoUtils, err, ok, Result, ValueObject } from '@rice/core-kernel';
 import type { PasswordPolicyService } from '../service/password-policy.service';
 import { PasswordValueObjectException } from 'src/exceptions/password-vo.exception';
