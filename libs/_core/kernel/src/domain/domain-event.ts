@@ -1,60 +1,196 @@
 // rice/libs/_core/kernel/src/domain/domain-event.ts
+import { ValueObject } from './value-object.base';
+import { Result, ok, fail, ResultMethods } from '../utils/result.util';
+import { SpecSchema } from '../utils/spec-validator.util';
+import { Mapper } from '../utils/functional.util';
 
-/**
- * 领域事件基础模块：定义领域驱动设计（DDD）中领域事件（Domain Event）的核心抽象基类
- * 领域事件用于捕获领域模型中发生的关键业务状态变更，是实现事件溯源（Event Sourcing）、领域事件发布-订阅模式的核心载体
- * 所有具体领域事件需继承此类并实现序列化方法
- */
+// ===================== 事件标识符 =====================
 
-// 导入聚合根基类及实体属性类型定义
-import { AggregateRoot } from '../domain/aggregate-root.base.js';
-import type { EntityProps } from '../domain/entity.base.js';
+export class EventId extends ValueObject<string> {
+  constructor(value: string) {
+    super(value);
+  }
 
-/**
- * 泛型参数说明：
- * - T：关联的聚合根类型（必须继承自AggregateRoot），表示该事件由哪个聚合根触发
- * - P：聚合根的属性类型（默认继承自EntityProps，即实体基础属性结构）
- */
-export abstract class DomainEvent<
-  T extends AggregateRoot<P>,
-  P extends EntityProps = EntityProps
-> {
-  /**
-   * 事件发生的时间戳（精确到毫秒）
-   * 自动记录事件创建时的系统时间，用于事件排序和时间序列分析
-   */
-  public readonly timestamp: Date;
+  public getSpec(): SpecSchema {
+    return {
+      schema: {
+        type: 'string',
+        format: 'uuid'
+      }
+    };
+  }
 
-  /**
-   * 触发该事件的聚合根唯一标识符
-   * 用于快速定位事件关联的业务实体（如订单ID、用户ID等）
-   */
-  public readonly aggregateId: string;
+  static generate(): Result<EventId> {
+    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
+      .replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
 
-  /**
-   * 事件类型的标识符（字符串形式）
-   * 默认使用事件类的构造函数名称（如"OrderCreatedEvent"），用于事件类型路由和反序列化
-   */
-  public readonly eventType: string;
+    return EventId.create(uuid);
+  }
+}
 
-  /**
-   * 构造函数：初始化领域事件的基础元数据
-   * @param aggregate 触发事件的聚合根实例（必须已初始化且拥有有效ID）
-   */
-  constructor(aggregate: T) {
-    // 自动记录当前时间作为事件发生时间
-    this.timestamp = new Date();
-    // 从聚合根中提取唯一标识符（依赖聚合根基类的id属性）
-    this.aggregateId = aggregate.id;
-    // 使用事件类名作为事件类型标识（子类需保持命名规范）
-    this.eventType = this.constructor.name;
+// ===================== 领域事件基类 =====================
+
+export abstract class DomainEvent<T> extends ValueObject<{
+  eventId: EventId;
+  occurredOn: Date;
+  eventType: string;
+  eventData: T;
+}> {
+  get eventType(): string {
+    return this.value.eventType;
+  }
+
+  get occurredOn(): Date {
+    return new Date(this.value.occurredOn);
+  }
+
+  get identity(): EventId {
+    return this.value.eventId;
+  }
+
+  get data(): Readonly<T> {
+    return this.value.eventData;
+  }
+
+  protected override getSpec(): SpecSchema {
+    const eventIdSpec = EventId.prototype.getSpec().schema;
+
+    return {
+      schema: {
+        type: 'object',
+        required: ['eventId', 'occurredOn', 'eventType', 'eventData'],
+        properties: {
+          eventId: eventIdSpec,
+          occurredOn: { type: 'string', format: 'date-time' },
+          eventType: { type: 'string', minLength: 1 },
+          eventData: {}
+        }
+      },
+      transform: ['toISOString']
+    };
   }
 
   /**
-   * 将事件对象序列化为纯数据对象（Plain Object）
-   * 用于事件持久化（如存储到事件存储库）、消息队列传输等场景
-   * 子类需实现此方法以定义具体的序列化逻辑（通常包含事件元数据和业务数据）
-   * @returns 包含事件完整信息的普通JavaScript对象
+   * 函数式领域事件创建
    */
-  abstract toPlainObject(): Record<string, unknown>;
+  static createEvent<U, T extends DomainEvent<U>>(
+    this: new (value: {
+      eventId: EventId;
+      occurredOn: Date;
+      eventType: string;
+      eventData: U;
+    }) => T,
+    eventData: U,
+    options: { eventId?: EventId; occurredOn?: Date } = {}
+  ): Result<T> {
+    // 获取发生时间（或当前时间）
+    const occurredOn = options.occurredOn || new Date();
+
+    // 安全创建事件实例的函数
+    const createEventInstance = (id: EventId): Result<T> => {
+      try {
+        return ok(new this({
+          eventId: id,
+          occurredOn,
+          eventType: this.name,
+          eventData
+        }));
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        return fail(err);
+      }
+    };
+
+    // 如果有提供 eventId，直接使用
+    if (options.eventId) {
+      return createEventInstance(options.eventId);
+    }
+
+    // 生成新的 eventId 并创建事件
+    const eventResult = EventId.generate();
+    return ResultMethods.flatMap(eventResult, createEventInstance);
+  }
 }
+
+// ===================== 函数式工具扩展 =====================
+
+export type EventHandler<E extends DomainEvent<unknown>> = (event: E) => Result<void>;
+
+export type EnhancedEventHandler<E extends DomainEvent<unknown>> = (
+  event: E,
+  metadata: EventMetadata
+) => Result<void>;
+
+export type EventMetadata = {
+  correlationId?: string;
+  causationId?: string;
+  timestamp?: Date;
+};
+
+export type EventFactory<T extends DomainEvent<unknown>> = (
+  data: unknown,
+  options?: { eventId?: EventId; occurredOn?: Date }
+) => Result<T>;
+
+// ===================== 实用函数 =====================
+
+/**
+ * 创建事件工厂函数
+ */
+export const createEventFactory = <T extends DomainEvent<unknown>>(
+  eventClass: {
+    createEvent: (data: unknown, options?: { eventId?: EventId; occurredOn?: Date }) => Result<T>
+  }
+): EventFactory<T> => {
+  return (data, options) => eventClass.createEvent(data, options);
+};
+
+/**
+ * 安全应用事件处理器
+ */
+export const safeApplyHandler = <E extends DomainEvent<unknown>>(
+  handler: EventHandler<E>
+): Mapper<E, Result<void>> => (event: E) => {
+  try {
+    return handler(event);
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    return fail(err);
+  }
+};
+
+/**
+ * 事件处理管道
+ */
+export const eventProcessingPipeline = <E extends DomainEvent<unknown>>(
+  ...handlers: EventHandler<E>[]
+): EventHandler<E> => (event: E) => {
+  // 初始结果为成功
+  let result: Result<void> = ok(undefined);
+
+  // 按顺序应用所有处理器
+  for (const handler of handlers) {
+    // 如果前一个操作失败，直接返回错误
+    if (result.isFail()) {
+      return result;
+    }
+
+    // 应用当前处理器
+    result = safeApplyHandler(handler)(event);
+  }
+
+  return result;
+};
+
+/**
+ * 组合多个事件处理器的简化方法
+ */
+export const composeEventHandlers = <E extends DomainEvent<unknown>>(
+  ...handlers: EventHandler<E>[]
+): EventHandler<E> => {
+  return eventProcessingPipeline(...handlers);
+};

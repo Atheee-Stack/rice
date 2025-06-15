@@ -13,11 +13,12 @@
       "path": "./libs/_core/infra"
     },
     {
-      "path": "./libs/_core/infra"
-    },
-    {
       "path": "./libs/user/domain"
     }
   ],
-  "exclude": ["**/*.spec.ts", "**/*.test.ts", "node_modules"]
+  "exclude": [
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "node_modules"
+  ]
 }

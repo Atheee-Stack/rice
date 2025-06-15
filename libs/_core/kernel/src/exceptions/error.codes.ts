@@ -1,4 +1,5 @@
 // rice/libs/_core/kernel/src/exceptions/error.codes.ts
+
 /**
  * 标准化错误码
  */

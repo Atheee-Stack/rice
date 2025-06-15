@@ -1,3 +1,5 @@
+// rice/libs/_core/kernel/src/utils/spec-validator.util.ts
+
 import Ajv from 'ajv';
 import type { ErrorObject, SchemaObject, Options as AjvOptions } from 'ajv';
 import addFormats from 'ajv-formats';

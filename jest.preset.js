@@ -1,10 +1,9 @@
 // jest.preset.js
-import nxPreset from '@nx/jest/preset/index.js'; // 添加文件扩展名
+import nxPreset from '@nx/jest/preset/index.js';
 
 export default {
   ...nxPreset,
 
-  // 添加ESM配置
   transform: {
     '^.+\\.(t|j)sx?$': [
       '@swc/jest',

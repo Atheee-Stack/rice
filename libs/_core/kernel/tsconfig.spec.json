@@ -4,12 +4,12 @@
     "baseUrl": "./",
     "outDir": "./out-tsc/jest",
     "types": [
-      "jest",
       "node",
-      "@jest/globals"
+      "jest"
     ],
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "forceConsistentCasingInFileNames": true
   },
   "include": [

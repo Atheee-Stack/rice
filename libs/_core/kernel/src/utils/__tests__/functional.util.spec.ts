@@ -1,152 +1,171 @@
-// libs/shared/utils/fp-utils.test.ts
+import { describe, it, expect } from '@jest/globals';
 import {
-  Result,
   pipe,
-  asyncPipe,
+  compose,
+  identity,
+  constant,
+  noop,
+  not,
+  flip,
+  partialL,
+  partialR,
   curry,
-  asyncCurry,
-  Predicate,
-  Mapper,
-  Reducer
+  curry3
 } from '../functional.util';
 
-describe('Result type', () => {
-  class CustomError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'CustomError';
-    }
-  }
+describe('Functional Utilities', () => {
+  // Test data with proper typing
+  const isEven = (n: number) => n % 2 === 0;
+  const double = (n: number) => n * 2;
+  const increment = (n: number) => n + 1;
 
-  test('should create successful result', () => {
-    const success = Result.ok(42);
-    expect(success.isOk).toBe(true);
-    expect(success.getValue()).toBe(42);
-  });
-
-  test('should create failed result', () => {
-    const error = new CustomError('Test error');
-    const failure = Result.fail(error);
-    expect(failure.isOk).toBe(false);
-    expect(failure.getError()).toBe(error);
-  });
-
-  test('should handle pattern matching', () => {
-    const success = Result.ok(100);
-    const failure = Result.fail(new CustomError('Failed'));
-
-    const successResult = success.match({
-      ok: val => val * 2,
-      fail: () => -1
+  describe('pipe()', () => {
+    it('should return input value with no functions', () => {
+      const result = pipe(42);
+      expect(result).toBe(42);
     });
 
-    const failureResult = failure.match({
-      ok: val => val * 2,
-      fail: () => -1
+    it('should apply single transformation', () => {
+      const result = pipe(5, double);
+      expect(result).toBe(10);
     });
 
-    expect(successResult).toBe(200);
-    expect(failureResult).toBe(-1);
+    it('should apply multiple transformations left-to-right', () => {
+      const result = pipe(3, increment, double);
+      expect(result).toBe(8);
+    });
+
+    it('should maintain type safety across transformations', () => {
+      const toStr = (n: number) => n.toString();
+      const result = pipe(10, double, toStr);
+      expect(result).toBe("20");
+    });
   });
 
-  test('should throw when accessing value on failure', () => {
-    const failure = Result.fail(new Error('Test'));
-    expect(() => failure.getValue()).toThrow('Cannot get value from failed result');
+  describe('compose()', () => {
+    it('should apply single function', () => {
+      const fn = compose((x: unknown) => double(x as number));
+      expect(fn(5)).toBe(10);
+    });
+
+    it('should apply functions right-to-left', () => {
+      const fn = compose(
+        (x: unknown) => double(x as number),
+        (y: unknown) => increment(y as number)
+      );
+      expect(fn(3)).toBe(8);
+    });
+
+    it('should maintain type safety across composition', () => {
+      const toStr = (n: number) => n.toString();
+      const addBang = (s: string) => s + "!";
+
+      const fn = compose(
+        (val: unknown) => addBang(val as string),
+        (val: unknown) => toStr(val as number),
+        (val: unknown) => double(val as number)
+      );
+
+      expect(fn(10)).toBe("20!");
+    });
   });
 
-  test('should throw when accessing error on success', () => {
-    const success = Result.ok('success');
-    expect(() => success.getError()).toThrow('Cannot get error from successful result');
+  describe('identity()', () => {
+    it('should return the input value unchanged', () => {
+      const obj = { id: 'test' };
+      expect(identity(obj)).toBe(obj);
+      expect(identity(42)).toBe(42);
+      expect(identity(null)).toBeNull();
+    });
+  });
+
+  describe('constant()', () => {
+    it('should always return the captured constant', () => {
+      const getFive = constant(5);
+      expect(getFive()).toBe(5);
+      expect(getFive()).toBe(5);
+    });
+  });
+
+  describe('noop()', () => {
+    it('should return undefined', () => {
+      expect(noop()).toBeUndefined();
+    });
+  });
+
+  describe('not()', () => {
+    it('should negate predicate results', () => {
+      const isOdd = not((x: unknown) => isEven(x as number));
+      expect(isOdd(1)).toBe(true);
+      expect(isOdd(2)).toBe(false);
+    });
+  });
+
+  describe('flip()', () => {
+    const divide = (a: number, b: number) => a / b;
+
+    it('should reverse arguments', () => {
+      const flippedDivide = flip((x: unknown, y: unknown) =>
+        divide(x as number, y as number)
+      );
+      expect(flippedDivide(2, 8)).toBe(4);
+    });
+
+    it('should maintain type safety', () => {
+      const concat = (a: string, b: string) => a + b;
+      const flippedConcat = flip((x: unknown, y: unknown) =>
+        concat(x as string, y as string)
+      );
+      expect(flippedConcat('b', 'a')).toBe('ab');
+    });
+  });
+
+  describe('partialL()', () => {
+    const sum = (a: number, b: number) => a + b;
+
+    it('should partially apply left argument', () => {
+      const addFive = partialL(
+        (a: unknown, b: unknown) => sum(a as number, b as number),
+        5
+      );
+      expect(addFive(3)).toBe(8);
+    });
+  });
+
+  describe('partialR()', () => {
+    const sum = (a: number, b: number) => a + b;
+
+    it('should partially apply right argument', () => {
+      const addToThree = partialR(
+        (a: unknown, b: unknown) => sum(a as number, b as number),
+        3
+      );
+      expect(addToThree(5)).toBe(8);
+    });
+  });
+
+  describe('curry()', () => {
+    const sum = (a: number, b: number) => a + b;
+
+    it('should curry a binary function', () => {
+      const curriedSum = curry(
+        (a: unknown, b: unknown) => sum(a as number, b as number)
+      );
+      const addFive = curriedSum(5);
+      expect(addFive(3)).toBe(8);
+    });
+  });
+
+  describe('curry3()', () => {
+    const sum3 = (a: number, b: number, c: number) => a + b + c;
+
+    it('should curry a ternary function', () => {
+      const curriedSum = curry3(
+        (a: unknown, b: unknown, c: unknown) =>
+          sum3(a as number, b as number, c as number)
+      );
+      const addToFive = curriedSum(5)(3);
+      expect(addToFive(2)).toBe(10);
+    });
   });
 });
-
-describe('Pipe functions', () => {
-  test('sync pipe should compose functions', () => {
-    const increment: Mapper<number, number> = x => x + 1;
-    const double: Mapper<number, number> = x => x * 2;
-    const toString: Mapper<number, string> = x => x.toString();
-
-    const pipeline = pipe(increment, double, toString);
-    const result = pipeline(5);
-
-    expect(result).toBe('12');
-    expect(typeof result).toBe('string');
-  });
-
-  test('async pipe should compose async functions', async () => {
-    // 修复参数类型定义
-    const fetchData: Mapper<string, Promise<string>> = async id => `data-${id}`;
-    const parseData: Mapper<string, Promise<number>> = async str => {
-      const num = parseInt(str.split('-')[1], 10);
-      return isNaN(num) ? 0 : num;
-    };
-    const processData: Mapper<number, Promise<string>> = async num =>
-      `result-${num * 2}`;
-
-    const pipeline = asyncPipe(fetchData, parseData, processData);
-    const result = await pipeline('42');
-
-    expect(result).toBe('result-84');
-  });
-
-  describe('Currying functions', () => {
-    test('sync curry should partial apply', () => {
-      const add = (a: number, b: number): number => a + b;
-      const curriedAdd = curry(add);
-      const addFive = curriedAdd(5);
-
-      expect(addFive(10)).toBe(15);
-      expect(curriedAdd(2)(3)).toBe(5);
-    });
-
-    test('async curry should partial apply', async () => {
-      const asyncAdd = async (a: number, b: number): Promise<number> => a + b;
-      const curriedAdd = asyncCurry(asyncAdd);
-      const addTen = curriedAdd(10);
-
-      expect(await addTen(5)).toBe(15);
-      expect(await curriedAdd(3)(7)).toBe(10);
-    });
-
-    test('should maintain type safety', () => {
-      const concat = (a: string, b: string) => a + b;
-      const curriedConcat = curry(concat);
-
-      // 类型安全测试
-      // @ts-expect-error - 测试错误类型输入
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const invalidResult: unknown = curriedConcat(42);
-
-      const valid = curriedConcat('hello');
-      expect(valid(' world')).toBe('hello world');
-    });
-  });
-
-  describe('Function composition', () => {
-    test('predicate composition', () => {
-      const isEven: Predicate<number> = n => n % 2 === 0;
-      const greaterThanTen: Predicate<number> = n => n > 10;
-
-      // 使用函数组合避免类型错误
-      const combinedPredicate = (n: number) => greaterThanTen(n) && isEven(n);
-
-      expect(combinedPredicate(14)).toBe(true);
-      expect(combinedPredicate(15)).toBe(false);
-      expect(combinedPredicate(8)).toBe(false);
-    });
-
-    test('reducer composition', () => {
-      const sumReducer: Reducer<number, number> = (acc, val) => acc + val;
-      // 修复未使用的参数错误
-      const countReducer: Reducer<number, number> = (acc) => acc + 1;
-
-      const data = [1, 2, 3, 4];
-      const sum = data.reduce(sumReducer, 0);
-      // 修复参数过多错误
-      const count = data.reduce(countReducer, 0);
-
-      expect(sum).toBe(10);
-      expect(count).toBe(4);
-    });
-  });
-})

@@ -1,4 +1,5 @@
 // rice/libs/_core/kernel/src/exceptions/domain.exception.ts
+
 /**
  * 领域异常基类
  */

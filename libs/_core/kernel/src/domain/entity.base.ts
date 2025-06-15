@@ -1,64 +1,197 @@
 // rice/libs/_core/kernel/src/domain/entity.base.ts
-/**
- * 实体基础模块：定义领域模型中实体（Entity）的核心抽象基类
- * 实体是领域模型中的核心概念，具有唯一标识符（ID），并通过ID而非属性值来区分不同实例
- * 继承自值对象（ValueObject），同时扩展了实体特有的标识符特性
- */
-
-// 导入值对象基类及关联类型
-import { Primitive } from '../utils/primitive.util.js';
-import { ValueObject } from './value-object.base.js';
-import type { ValueObjectProps } from './value-object.base.js';
-
-/**
- * 实体属性接口定义
- * 扩展值对象属性接口，强制要求包含唯一标识符 `id`
- * @template T 实体具体属性类型（需继承自EntityProps）
- */
-export interface EntityProps {
-  /** 实体的唯一标识符（全局唯一） */
-  id: string;
-  /** 其他业务属性，支持原始类型、值对象或值对象数组 */
-  [key: string]: Primitive | ValueObject<ValueObjectProps> | ValueObject<ValueObjectProps>[];
-}
+import {
+  ValueObject,
+  ValueType
+} from './value-object.base';
+import {
+  Result,
+  ok,
+  fail
+} from '../utils/result.util';
+import {
+  Mapper,
+  Predicate
+} from '../utils/functional.util';
+import { Primitive } from '../utils/primitive.util';
 
 /**
- * 实体抽象基类（领域驱动设计中的核心实体抽象）
- * 提供实体共性能力：标识符访问、相等性判断等
- * @template T 具体实体的属性类型（需继承自EntityProps）
+ * 实体基类（函数式编程风格）
+ * 
+ * @template ID - 实体ID的类型（必须为值对象）
+ * @template S - 实体状态的类型
+ * 
+ * @domain Domain-Driven Design (Core Domain)
  */
-export abstract class Entity<T extends EntityProps> extends ValueObject<T> {
-  /**
-   * 获取实体唯一标识符
-   * @returns 实体的ID字符串
-   */
-  get id(): string {
-    return this.props.id;
+export abstract class Entity<ID extends ValueObject<Primitive>, S> {
+  protected readonly id: ID;
+  protected readonly state: S;
+
+  protected constructor(id: ID, state: S) {
+    this.id = id;
+    this.state = Object.freeze(state) as S;
+  }
+
+  get identity(): Readonly<ID> {
+    return this.id;
+  }
+
+  get stateSnapshot(): Readonly<S> {
+    return this.state;
+  }
+
+  equals(other: Entity<ID, S>): boolean {
+    if (this === other) return true;
+    return this.id.equals(other.id);
+  }
+
+  hashCode(): string {
+    return this.id.hashCode();
+  }
+
+  compare(other: Entity<ID, S>): number {
+    return this.id.compare(other.id);
   }
 
   /**
-   * 判断两个实体是否相等（核心业务逻辑）
-   * 领域驱动设计原则：实体通过唯一标识符（ID）判断相等性，而非属性值全量比较
-   * @param object 待比较的对象（可能是另一个实体实例）
-   * @returns 相等返回true，否则返回false
+   * 创建实体的工厂方法
    */
-  public override equals(object?: Entity<T>): boolean {
-    // 空值校验：对象不存在则不相等
-    if (object === null || object === undefined) {
-      return false;
-    }
+  static create<
+    IDVO extends ValueObject<Primitive>,
+    State,
+    T extends Entity<IDVO, State>
+  >(
+    this: EntityConstructor<IDVO, State, T>,
+    id: unknown,
+    state: unknown
+  ): Result<T> {
+    const idResult = this.validateId(id);
+    if (idResult.isFail()) return fail(idResult.unwrapErr());
 
-    // 自引用校验：同一实例直接判定为相等
-    if (this === object) {
-      return true;
-    }
+    const stateResult = this.validateState(state);
+    if (stateResult.isFail()) return fail(stateResult.unwrapErr());
 
-    // 类型校验：必须是Entity类型实例
-    if (!(object instanceof Entity)) {
-      return false;
+    try {
+      return ok(new this(
+        idResult.unwrap() as IDVO,
+        stateResult.unwrap() as State
+      ));
+    } catch (error) {
+      return fail(error instanceof Error ? error : new Error(String(error)));
     }
+  }
 
-    // 核心逻辑：通过ID比较判定实体相等性
-    return this.id === object.id;
+  /**
+   * 状态迁移方法
+   */
+  transition(updater: (state: S) => S): this {
+    const Constructor = this.constructor as new (id: ID, state: S) => this;
+    return new Constructor(this.id, updater(this.state));
+  }
+
+  /**
+   * 状态过滤检查
+   */
+  ensureState(predicate: Predicate<S>): Result<this> {
+    return predicate(this.state)
+      ? ok(this)
+      : fail(new Error('State condition not satisfied'));
+  }
+
+  /**
+   * 实体管道操作
+   */
+  pipe(...operators: Array<Mapper<S, S>>): this {
+    return operators.reduce((entity, operator) => {
+      return entity.transition(operator);
+    }, this);
+  }
+
+  /**
+   * ID验证方法（子类必须实现）
+   * 
+   * 使用占位符实现，子类应覆盖此方法
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  static validateId(_id: unknown): Result<ValueObject<Primitive>> {
+    throw new Error('validateId must be implemented by subclass');
+  }
+
+  /**
+   * 状态验证方法（子类必须实现）
+   * 
+   * 使用占位符实现，子类应覆盖此方法
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  static validateState(_state: unknown): Result<unknown> {
+    throw new Error('validateState must be implemented by subclass');
+  }
+
+  toJSON(): { id: ValueType<ID>; state: S } {
+    return {
+      id: this.id.value as ValueType<ID>,
+      state: this.state
+    };
+  }
+
+  toString(): string {
+    return `Entity[${this.id.toString()}]`;
   }
 }
+
+// ===================== 函数式工具扩展 =====================
+
+/**
+ * 实体状态相等性检查
+ */
+export const stateEquals = <S>(expectedState: S): Predicate<Entity<ValueObject<Primitive>, S>> => {
+  return (entity) => {
+    const currentState = entity.stateSnapshot;
+    return JSON.stringify(currentState) === JSON.stringify(expectedState);
+  };
+};
+
+/**
+ * 实体状态转换器
+ */
+export const mapEntityState = <ID extends ValueObject<Primitive>, S, T>(
+  mapper: (state: S) => T
+): (entity: Entity<ID, S>) => Entity<ID, T> => {
+  return (entity) => {
+    const Constructor = entity.constructor as new (id: ID, state: T) => Entity<ID, T>;
+    return new Constructor(entity.identity, mapper(entity.stateSnapshot));
+  };
+};
+
+/**
+ * 实体状态管道操作
+ */
+export const entityStatePipeline = <E extends Entity<ValueObject<Primitive>, S>, S>(
+  ...mappers: Array<Mapper<S, S>>
+): Mapper<E, E> => {
+  return (entity) => entity.pipe(...mappers);
+};
+
+// ===================== 类型扩展 =====================
+
+/**
+ * 实体构造函数接口
+ */
+export interface EntityConstructor<
+  ID extends ValueObject<Primitive>,
+  S,
+  T extends Entity<ID, S>
+> {
+  new(id: ID, state: S): T;
+  validateId(id: unknown): Result<ValueObject<Primitive>>;
+  validateState(state: unknown): Result<unknown>;
+}
+
+/**
+ * 实体ID类型提取
+ */
+export type EntityIdType<E> = E extends Entity<infer ID, unknown> ? ID : never;
+
+/**
+ * 实体状态类型提取
+ */
+export type EntityStateType<E> = E extends Entity<ValueObject<Primitive>, infer S> ? S : never;
